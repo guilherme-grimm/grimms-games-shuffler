@@ -63,13 +63,20 @@ disabled until `BASE_URL` and `STEAM_API_KEY` are set.
 Go 1.26+, pnpm, [sqlc](https://sqlc.dev) and golangci-lint.
 
 ```sh
-make run    # backend on :8080 (pair with `cd web && pnpm dev`)
+make dev    # everything: fresh fake session + backend :8080 + Vite HMR on :5173
+make run    # backend only (pair with `cd web && pnpm dev`)
 make check  # lint + race tests + sqlc diff + frontend build — the pre-push gate
 make build  # production binary with embedded frontend
 ```
 
-`go run ./cmd/devseed ./.data` fakes a player, session (`ggs_session=testtoken`)
-and a small library so you can drive the whole flow without a Steam login.
+`make dev` needs no Steam credentials: it reseeds `./.data` with a fake
+player, session and library (`make seed` to do just that). Open
+`http://localhost:5173` and set the cookie in the devtools console:
+
+```js
+document.cookie = 'ggs_session=testtoken'
+```
+
 `cmd/seedgen` regenerates the embedded Seed Catalog from SteamSpy.
 
 The architecture is hexagonal (`internal/domain`, `internal/adapter`,
