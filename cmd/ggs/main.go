@@ -113,9 +113,15 @@ func run() error {
 		log.Info("ai garnish enabled", "model", cfg.aiModel)
 	}
 	shuffles := shuffledomain.NewService(sqlite.NewShuffleStorage(db), picker, log)
-	cat := catalogdomain.NewService(
-		sqlite.NewCatalogStorage(db), steamspy.NewClient(), log, 1200*time.Millisecond,
-	)
+
+	catStore := sqlite.NewCatalogStorage(db)
+	if n, err := catStore.ApplySeed(ctx, time.Now()); err != nil {
+		// A broken seed must not stop the Instance; live enrichment covers it.
+		log.Error("apply seed catalog", "error", err)
+	} else if n > 0 {
+		log.Info("seed catalog applied", "games", n)
+	}
+	cat := catalogdomain.NewService(catStore, steamspy.NewClient(), log, 1200*time.Millisecond)
 
 	var wg sync.WaitGroup
 	enrichCtx, stopEnricher := context.WithCancel(context.Background())

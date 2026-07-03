@@ -9,6 +9,7 @@ import (
 )
 
 type Querier interface {
+	ApplySeedGame(ctx context.Context, arg ApplySeedGameParams) error
 	CountLibrary(ctx context.Context, steamID string) (int64, error)
 	CountShufflesToday(ctx context.Context, arg CountShufflesTodayParams) (int64, error)
 	CreateSession(ctx context.Context, arg CreateSessionParams) error

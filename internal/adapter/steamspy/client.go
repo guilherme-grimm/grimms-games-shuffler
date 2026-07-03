@@ -31,6 +31,43 @@ func NewClient() *Client {
 	return &Client{http: &http.Client{Timeout: 15 * time.Second}}
 }
 
+// AppRef is one entry of SteamSpy's paginated "all" listing, ordered by
+// owner count. Used by seedgen to find the most-owned appids.
+type AppRef struct {
+	AppID int64
+	Name  string
+}
+
+// AllPage fetches one page (1000 apps) of the owners-ranked listing.
+// SteamSpy allows 1 request per minute for this endpoint.
+func (c *Client) AllPage(ctx context.Context, page int) ([]AppRef, error) {
+	q := url.Values{"request": {"all"}, "page": {strconv.Itoa(page)}}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, _apiURL+"?"+q.Encode(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("build steamspy all request: %w", err)
+	}
+	res, err := c.http.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("steamspy all page %d: %w", page, err)
+	}
+	defer func() { _ = res.Body.Close() }()
+	if res.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("steamspy all page %d: status %d", page, res.StatusCode)
+	}
+	var out map[string]struct {
+		AppID int64  `json:"appid"`
+		Name  string `json:"name"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&out); err != nil {
+		return nil, fmt.Errorf("decode steamspy all page %d: %w", page, err)
+	}
+	refs := make([]AppRef, 0, len(out))
+	for _, v := range out {
+		refs = append(refs, AppRef{AppID: v.AppID, Name: v.Name})
+	}
+	return refs, nil
+}
+
 // Fetch pulls tags and genres for one appid. SteamSpy answers unknown apps
 // with name "" — mapped to catalog.ErrNotFound.
 func (c *Client) Fetch(ctx context.Context, appID int64) (catalog.Enrichment, error) {

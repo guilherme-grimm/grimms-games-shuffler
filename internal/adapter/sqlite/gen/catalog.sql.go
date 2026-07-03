@@ -9,6 +9,37 @@ import (
 	"context"
 )
 
+const applySeedGame = `-- name: ApplySeedGame :exec
+INSERT INTO games (appid, name, tags, genres, source, enriched_at)
+VALUES (?, ?, ?, ?, 'seed', ?)
+ON CONFLICT (appid) DO UPDATE SET
+    tags = excluded.tags,
+    genres = excluded.genres,
+    source = 'seed',
+    enriched_at = excluded.enriched_at,
+    name = CASE WHEN games.name = '' THEN excluded.name ELSE games.name END
+WHERE games.enriched_at IS NULL
+`
+
+type ApplySeedGameParams struct {
+	Appid      int64
+	Name       string
+	Tags       string
+	Genres     string
+	EnrichedAt *string
+}
+
+func (q *Queries) ApplySeedGame(ctx context.Context, arg ApplySeedGameParams) error {
+	_, err := q.db.ExecContext(ctx, applySeedGame,
+		arg.Appid,
+		arg.Name,
+		arg.Tags,
+		arg.Genres,
+		arg.EnrichedAt,
+	)
+	return err
+}
+
 const enrichmentProgress = `-- name: EnrichmentProgress :one
 SELECT
     COUNT(*)                                          AS total,

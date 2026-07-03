@@ -9,18 +9,20 @@ import (
 
 	"github.com/guilherme-grimm/ggs/internal/adapter/sqlite/gen"
 	"github.com/guilherme-grimm/ggs/internal/dto/catalog"
+	"github.com/guilherme-grimm/ggs/internal/seeddata"
 )
 
 // CatalogStorage implements catalog.Storage.
 type CatalogStorage struct {
-	q *gen.Queries
+	db *sql.DB
+	q  *gen.Queries
 }
 
 var _ catalog.Storage = (*CatalogStorage)(nil)
 
 // NewCatalogStorage wraps db with the catalog.Storage implementation.
 func NewCatalogStorage(db *sql.DB) *CatalogStorage {
-	return &CatalogStorage{q: gen.New(db)}
+	return &CatalogStorage{db: db, q: gen.New(db)}
 }
 
 // NextUnenriched implements catalog.Storage.
@@ -63,6 +65,45 @@ func (s *CatalogStorage) MarkEnrichmentFailed(ctx context.Context, appID int64, 
 		return fmt.Errorf("mark enrichment failed %d: %w", appID, err)
 	}
 	return nil
+}
+
+// ApplySeed loads the embedded Seed Catalog into games, never overwriting
+// rows already enriched live. Idempotent; runs on every boot.
+func (s *CatalogStorage) ApplySeed(ctx context.Context, at time.Time) (int, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("begin seed: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	q := s.q.WithTx(tx)
+	ts := formatTime(at)
+
+	n := 0
+	err = seeddata.Each(func(g seeddata.Game) error {
+		tags, err := json.Marshal(g.Tags)
+		if err != nil {
+			return fmt.Errorf("marshal seed tags %d: %w", g.AppID, err)
+		}
+		genres, err := json.Marshal(g.Genres)
+		if err != nil {
+			return fmt.Errorf("marshal seed genres %d: %w", g.AppID, err)
+		}
+		if err := q.ApplySeedGame(ctx, gen.ApplySeedGameParams{
+			Appid: g.AppID, Name: g.Name,
+			Tags: string(tags), Genres: string(genres), EnrichedAt: &ts,
+		}); err != nil {
+			return fmt.Errorf("apply seed game %d: %w", g.AppID, err)
+		}
+		n++
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("commit seed: %w", err)
+	}
+	return n, nil
 }
 
 // Progress implements catalog.Storage.

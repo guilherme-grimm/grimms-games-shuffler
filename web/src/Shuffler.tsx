@@ -156,7 +156,7 @@ export function Shuffler(props: {
           <p className="why">&gt; {result.why}</p>
           <div className="actions">
             <a
-              className="btn"
+              className="btn accent"
               href={`steam://run/${result.appId}`}
             >
               ▶ PLAY
