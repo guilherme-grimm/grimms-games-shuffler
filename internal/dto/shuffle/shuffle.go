@@ -96,11 +96,21 @@ var (
 	ErrInvalidMood = errors.New("shuffle: invalid mood")
 )
 
-// Service is the driving contract.
+// Service is the driving contract. useAI is honored only when the Instance
+// has a Picker configured; otherwise the Shuffle silently stays non-AI.
 type Service interface {
-	Shuffle(ctx context.Context, steamID string, mood Mood) (Result, error)
+	Shuffle(ctx context.Context, steamID string, mood Mood, useAI bool) (Result, error)
 	// Left returns remaining Shuffles and when the budget resets.
 	Left(ctx context.Context, steamID string) (int, time.Time, error)
+	// AIAvailable reports whether this Instance can garnish with AI.
+	AIAvailable() bool
+}
+
+// Picker is the driven contract for the AI garnish: given the deterministic
+// Candidates it returns the chosen appid and a Why. It must never pick
+// outside the given list (ADR 0001).
+type Picker interface {
+	Pick(ctx context.Context, mood Mood, candidates []Candidate) (appID int64, why string, err error)
 }
 
 // Storage is the driven contract for Shuffle persistence and candidates.

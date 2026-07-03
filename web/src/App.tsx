@@ -10,6 +10,7 @@ type Me = {
   libraryCount: number
   shufflesLeft: number
   resetAt: string
+  aiAvailable: boolean
 }
 
 type Phase =
@@ -116,6 +117,7 @@ export default function App() {
         <Shuffler
           shufflesLeft={phase.me.shufflesLeft}
           resetAt={phase.me.resetAt}
+          aiAvailable={phase.me.aiAvailable}
           onSpent={(shufflesLeft) =>
             setPhase((p) =>
               p.kind === 'ready' ? { ...p, me: { ...p.me, shufflesLeft } } : p,

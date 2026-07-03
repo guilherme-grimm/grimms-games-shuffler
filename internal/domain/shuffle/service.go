@@ -6,6 +6,7 @@ package shuffle
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"math/rand/v2"
 	"strings"
 	"time"
@@ -13,23 +14,34 @@ import (
 	"github.com/guilherme-grimm/ggs/internal/dto/shuffle"
 )
 
+// _aiCandidateCap bounds how many candidates are sent to the Picker so the
+// prompt (and token cost) stays flat regardless of library size.
+const _aiCandidateCap = 50
+
 // Service implements shuffle.Service.
 type Service struct {
-	store shuffle.Storage
-	now   func() time.Time
-	pick  func(weights []int) int
+	store  shuffle.Storage
+	picker shuffle.Picker // nil when the Instance has no AI
+	log    *slog.Logger
+	now    func() time.Time
+	pick   func(weights []int) int
 }
 
 var _ shuffle.Service = (*Service)(nil)
 
-// NewService wires the shuffle service.
-func NewService(store shuffle.Storage) *Service {
-	return &Service{store: store, now: time.Now, pick: weightedIndex}
+// NewService wires the shuffle service; picker may be nil (Instance without
+// AI configured).
+func NewService(store shuffle.Storage, picker shuffle.Picker, log *slog.Logger) *Service {
+	return &Service{store: store, picker: picker, log: log, now: time.Now, pick: weightedIndex}
 }
 
+// AIAvailable implements shuffle.Service.
+func (s *Service) AIAvailable() bool { return s.picker != nil }
+
 // Shuffle implements shuffle.Service: budget check → filter → relax →
-// weighted pick → templated Why → persist.
-func (s *Service) Shuffle(ctx context.Context, steamID string, mood shuffle.Mood) (shuffle.Result, error) {
+// pick (AI garnish or weighted random) → persist. An AI failure falls back
+// to the deterministic path — the Shuffle still succeeds (ADR 0001).
+func (s *Service) Shuffle(ctx context.Context, steamID string, mood shuffle.Mood, useAI bool) (shuffle.Result, error) {
 	if !mood.Valid() {
 		return shuffle.Result{}, shuffle.ErrInvalidMood
 	}
@@ -64,20 +76,48 @@ func (s *Service) Shuffle(ctx context.Context, steamID string, mood shuffle.Mood
 		return shuffle.Result{}, shuffle.ErrNoCandidates
 	}
 
-	chosen := candidates[s.pick(weights(candidates))]
-	why := templateWhy(chosen, relaxed)
+	chosen, why, usedAI := s.choose(ctx, mood, candidates, relaxed, useAI)
 
 	if err := s.store.Insert(ctx, shuffle.Record{
 		SteamID: steamID, DateUTC: today, AppID: chosen.AppID,
-		Mood: mood, UsedAI: false, Why: why, CreatedAt: now,
+		Mood: mood, UsedAI: usedAI, Why: why, CreatedAt: now,
 	}); err != nil {
 		return shuffle.Result{}, err
 	}
 	return shuffle.Result{
 		AppID: chosen.AppID, Name: chosen.Name, Why: why,
-		UsedAI: false, ShufflesLeft: shuffle.DailyBudget - used - 1,
+		UsedAI: usedAI, ShufflesLeft: shuffle.DailyBudget - used - 1,
 		Relaxed: relaxed,
 	}, nil
+}
+
+// choose runs the AI garnish when requested and available, falling back to
+// the deterministic weighted pick on any Picker misbehavior.
+func (s *Service) choose(ctx context.Context, mood shuffle.Mood, candidates []shuffle.Candidate,
+	relaxed []string, useAI bool) (shuffle.Candidate, string, bool) {
+	if useAI && s.picker != nil {
+		capped := candidates
+		if len(capped) > _aiCandidateCap {
+			// Random sample, not a prefix — appid order would bias the AI
+			// toward a player's oldest games.
+			capped = make([]shuffle.Candidate, len(candidates))
+			copy(capped, candidates)
+			rand.Shuffle(len(capped), func(i, j int) { capped[i], capped[j] = capped[j], capped[i] })
+			capped = capped[:_aiCandidateCap]
+		}
+		appID, why, err := s.picker.Pick(ctx, mood, capped)
+		if err == nil {
+			for _, c := range capped {
+				if c.AppID == appID {
+					return c, why, true
+				}
+			}
+			err = fmt.Errorf("picker chose appid %d outside candidates", appID)
+		}
+		s.log.Warn("ai pick failed, falling back to deterministic", "error", err)
+	}
+	chosen := candidates[s.pick(weights(candidates))]
+	return chosen, templateWhy(chosen, relaxed), false
 }
 
 // Left implements shuffle.Service.

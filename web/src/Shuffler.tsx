@@ -66,6 +66,7 @@ const QUESTIONS: {
 export function Shuffler(props: {
   shufflesLeft: number
   resetAt: string
+  aiAvailable: boolean
   onSpent: (left: number) => void
 }) {
   const [mood, setMood] = useState<Partial<Mood>>({})
@@ -73,6 +74,15 @@ export function Shuffler(props: {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [progress, setProgress] = useState<Progress | null>(null)
+  const [useAi, setUseAi] = useState(() => localStorage.getItem('ggs_ai') !== 'off')
+  const [note, setNote] = useState('')
+
+  const toggleAi = () => {
+    setUseAi((on) => {
+      localStorage.setItem('ggs_ai', on ? 'off' : 'on')
+      return !on
+    })
+  }
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>
@@ -97,10 +107,15 @@ export function Shuffler(props: {
   const shuffle = async () => {
     setBusy(true)
     setError(null)
+    const ai = props.aiAvailable && useAi
     const res = await fetch('/api/shuffle', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(mood),
+      body: JSON.stringify({
+        ...mood,
+        useAi: ai,
+        note: ai && note.trim() ? note.trim() : undefined,
+      }),
     })
     setBusy(false)
     if (!res.ok) {
@@ -134,7 +149,10 @@ export function Shuffler(props: {
             src={`https://cdn.cloudflare.steamstatic.com/steam/apps/${result.appId}/header.jpg`}
             alt={result.name}
           />
-          <h2 className="game-name">{result.name}</h2>
+          <h2 className="game-name">
+            {result.name}
+            {result.usedAi && <span className="ai-badge"> [AI PICK]</span>}
+          </h2>
           <p className="why">&gt; {result.why}</p>
           <div className="actions">
             <a
@@ -178,6 +196,29 @@ export function Shuffler(props: {
               </div>
             </fieldset>
           ))}
+          {props.aiAvailable && (
+            <fieldset className="question">
+              <legend>AI CO-PILOT</legend>
+              <div className="options ai-row">
+                <button
+                  className={useAi ? 'btn selected' : 'btn'}
+                  onClick={toggleAi}
+                >
+                  AI: {useAi ? 'ON' : 'OFF'}
+                </button>
+                {useAi && (
+                  <input
+                    className="note-input"
+                    type="text"
+                    maxLength={200}
+                    placeholder="MOOD NOTE (OPTIONAL)…"
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                  />
+                )}
+              </div>
+            </fieldset>
+          )}
           <button
             className="btn go"
             onClick={shuffle}

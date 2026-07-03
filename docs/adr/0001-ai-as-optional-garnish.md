@@ -9,4 +9,4 @@ We chose this over an AI-first design (send the whole library to the LLM, let it
 - Whether AI is available is an Instance-level config (the operator provides the API key — the hosted instance's operator or the self-hoster). When available, each Player still toggles AI per Shuffle.
 - Mood questions must remain answerable by deterministic filters; only the Mood Note is AI-exclusive.
 - The 3-Shuffles-per-day cap doubles as the Instance operator's LLM cost ceiling.
-- Single provider (Anthropic) initially, behind a thin interface so adding providers is a small change, not a redesign.
+- Single gateway (OpenRouter, OpenAI-compatible API) initially — free models first, paid ones if the project gets traction. The gateway sits behind a thin Picker interface so swapping providers/models is config, not a redesign. (Originally Anthropic direct; switched to OpenRouter before implementation for zero-cost experimentation.)

@@ -16,6 +16,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/guilherme-grimm/ggs/internal/adapter/openrouter"
 	"github.com/guilherme-grimm/ggs/internal/adapter/sqlite"
 	"github.com/guilherme-grimm/ggs/internal/adapter/steam"
 	"github.com/guilherme-grimm/ggs/internal/adapter/steamspy"
@@ -23,6 +24,7 @@ import (
 	playerdomain "github.com/guilherme-grimm/ggs/internal/domain/player"
 	shuffledomain "github.com/guilherme-grimm/ggs/internal/domain/shuffle"
 	"github.com/guilherme-grimm/ggs/internal/dto/player"
+	"github.com/guilherme-grimm/ggs/internal/dto/shuffle"
 	handler "github.com/guilherme-grimm/ggs/internal/handler/http"
 	"github.com/guilherme-grimm/ggs/web"
 )
@@ -33,7 +35,7 @@ type config struct {
 	baseURL       string
 	steamAPIKey   string
 	sessionSecret string
-	anthropicKey  string
+	openrouterKey string
 	aiModel       string
 }
 
@@ -44,8 +46,8 @@ func loadConfig() config {
 		baseURL:       os.Getenv("BASE_URL"),
 		steamAPIKey:   os.Getenv("STEAM_API_KEY"),
 		sessionSecret: os.Getenv("SESSION_SECRET"),
-		anthropicKey:  os.Getenv("ANTHROPIC_API_KEY"),
-		aiModel:       envOr("GGS_AI_MODEL", "claude-sonnet-5"),
+		openrouterKey: os.Getenv("OPENROUTER_API_KEY"),
+		aiModel:       envOr("GGS_AI_MODEL", "meta-llama/llama-3.3-70b-instruct:free"),
 	}
 }
 
@@ -105,7 +107,12 @@ func run() error {
 			cfg.baseURL,
 		)
 	}
-	shuffles := shuffledomain.NewService(sqlite.NewShuffleStorage(db))
+	var picker shuffle.Picker
+	if cfg.openrouterKey != "" {
+		picker = openrouter.NewClient(cfg.openrouterKey, cfg.aiModel)
+		log.Info("ai garnish enabled", "model", cfg.aiModel)
+	}
+	shuffles := shuffledomain.NewService(sqlite.NewShuffleStorage(db), picker, log)
 	cat := catalogdomain.NewService(
 		sqlite.NewCatalogStorage(db), steamspy.NewClient(), log, 1200*time.Millisecond,
 	)

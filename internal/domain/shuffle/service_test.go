@@ -3,11 +3,27 @@ package shuffle_test
 import (
 	"context"
 	"errors"
+	"io"
+	"log/slog"
 	"testing"
 
 	domain "github.com/guilherme-grimm/ggs/internal/domain/shuffle"
 	"github.com/guilherme-grimm/ggs/internal/dto/shuffle"
 )
+
+func testLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
+
+type fakePicker struct {
+	appID int64
+	why   string
+	err   error
+}
+
+func (f *fakePicker) Pick(context.Context, shuffle.Mood, []shuffle.Candidate) (int64, string, error) {
+	return f.appID, f.why, f.err
+}
 
 type fakeStore struct {
 	candidates []shuffle.Candidate
@@ -91,8 +107,8 @@ func TestShuffleFilters(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			svc := domain.NewService(&fakeStore{candidates: lib()})
-			res, err := svc.Shuffle(t.Context(), "p1", tt.mood)
+			svc := domain.NewService(&fakeStore{candidates: lib()}, nil, testLogger())
+			res, err := svc.Shuffle(t.Context(), "p1", tt.mood, false)
 			if err != nil {
 				t.Fatalf("shuffle: %v", err)
 			}
@@ -115,13 +131,13 @@ func TestShuffleFilters(t *testing.T) {
 func TestShuffleBudgetAndNoRepeat(t *testing.T) {
 	t.Parallel()
 	store := &fakeStore{candidates: lib()}
-	svc := domain.NewService(store)
+	svc := domain.NewService(store, nil, testLogger())
 	m := mood(shuffle.EnergyBalanced, shuffle.TimeMedium, shuffle.FamiliaritySurprise, "")
 
 	picked := map[int64]bool{}
 	var lefts []int
 	for i := 0; i < shuffle.DailyBudget; i++ {
-		res, err := svc.Shuffle(t.Context(), "p1", m)
+		res, err := svc.Shuffle(t.Context(), "p1", m, false)
 		if err != nil {
 			t.Fatalf("shuffle %d: %v", i+1, err)
 		}
@@ -135,21 +151,21 @@ func TestShuffleBudgetAndNoRepeat(t *testing.T) {
 		t.Fatalf("shufflesLeft sequence = %v, want [2 1 0]", lefts)
 	}
 
-	if _, err := svc.Shuffle(t.Context(), "p1", m); !errors.Is(err, shuffle.ErrBudgetSpent) {
+	if _, err := svc.Shuffle(t.Context(), "p1", m, false); !errors.Is(err, shuffle.ErrBudgetSpent) {
 		t.Fatalf("4th shuffle err = %v, want ErrBudgetSpent", err)
 	}
 
 	// A different Player has a fresh budget.
-	if _, err := svc.Shuffle(t.Context(), "p2", m); err != nil {
+	if _, err := svc.Shuffle(t.Context(), "p2", m, false); err != nil {
 		t.Fatalf("other player blocked: %v", err)
 	}
 }
 
 func TestShuffleEmptyLibrary(t *testing.T) {
 	t.Parallel()
-	svc := domain.NewService(&fakeStore{})
+	svc := domain.NewService(&fakeStore{}, nil, testLogger())
 	m := mood(shuffle.EnergyChill, shuffle.TimeQuick, shuffle.FamiliaritySurprise, "")
-	_, err := svc.Shuffle(t.Context(), "p1", m)
+	_, err := svc.Shuffle(t.Context(), "p1", m, false)
 	if !errors.Is(err, shuffle.ErrNoCandidates) {
 		t.Fatalf("err = %v, want ErrNoCandidates", err)
 	}
@@ -157,10 +173,79 @@ func TestShuffleEmptyLibrary(t *testing.T) {
 
 func TestShuffleInvalidMood(t *testing.T) {
 	t.Parallel()
-	svc := domain.NewService(&fakeStore{candidates: lib()})
-	_, err := svc.Shuffle(t.Context(), "p1", shuffle.Mood{Energy: "hyped"})
+	svc := domain.NewService(&fakeStore{candidates: lib()}, nil, testLogger())
+	_, err := svc.Shuffle(t.Context(), "p1", shuffle.Mood{Energy: "hyped"}, false)
 	if !errors.Is(err, shuffle.ErrInvalidMood) {
 		t.Fatalf("err = %v, want ErrInvalidMood", err)
+	}
+}
+
+func TestShuffleAI(t *testing.T) {
+	t.Parallel()
+	m := mood(shuffle.EnergyBalanced, shuffle.TimeMedium, shuffle.FamiliaritySurprise, "")
+
+	tests := []struct {
+		name       string
+		picker     shuffle.Picker
+		useAI      bool
+		wantUsedAI bool
+		wantAppID  int64 // 0 = any
+		wantWhy    string
+	}{
+		{
+			name:       "ai pick honored",
+			picker:     &fakePicker{appID: 1, why: "COZY TIME, PLAYER ONE."},
+			useAI:      true,
+			wantUsedAI: true,
+			wantAppID:  1,
+			wantWhy:    "COZY TIME, PLAYER ONE.",
+		},
+		{
+			name:       "ai error falls back to deterministic",
+			picker:     &fakePicker{err: errors.New("rate limited")},
+			useAI:      true,
+			wantUsedAI: false,
+		},
+		{
+			name:       "ai picking outside candidates falls back",
+			picker:     &fakePicker{appID: 999, why: "hallucinated"},
+			useAI:      true,
+			wantUsedAI: false,
+		},
+		{
+			name:       "toggle off ignores picker",
+			picker:     &fakePicker{appID: 1, why: "should not be used"},
+			useAI:      false,
+			wantUsedAI: false,
+		},
+		{
+			name:       "no picker configured ignores useAI",
+			picker:     nil,
+			useAI:      true,
+			wantUsedAI: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			svc := domain.NewService(&fakeStore{candidates: lib()}, tt.picker, testLogger())
+			res, err := svc.Shuffle(t.Context(), "p1", m, tt.useAI)
+			if err != nil {
+				t.Fatalf("shuffle: %v", err)
+			}
+			if res.UsedAI != tt.wantUsedAI {
+				t.Fatalf("usedAI = %v, want %v", res.UsedAI, tt.wantUsedAI)
+			}
+			if tt.wantAppID != 0 && res.AppID != tt.wantAppID {
+				t.Fatalf("appid = %d, want %d", res.AppID, tt.wantAppID)
+			}
+			if tt.wantWhy != "" && res.Why != tt.wantWhy {
+				t.Fatalf("why = %q, want %q", res.Why, tt.wantWhy)
+			}
+			if !tt.wantUsedAI && res.Why == "" {
+				t.Fatal("fallback why empty")
+			}
+		})
 	}
 }
 
@@ -169,11 +254,11 @@ func TestUnenrichedNeverMatchesTagFilters(t *testing.T) {
 	store := &fakeStore{candidates: []shuffle.Candidate{
 		{AppID: 4, Name: "Mystery Box", Enriched: false, PlaytimeMin: 0},
 	}}
-	svc := domain.NewService(store)
+	svc := domain.NewService(store, nil, testLogger())
 	// Chill requires tags; the only game is unenriched → energy relaxes,
 	// surprise (playtime) still matches.
 	res, err := svc.Shuffle(t.Context(), "p1",
-		mood(shuffle.EnergyChill, shuffle.TimeMedium, shuffle.FamiliaritySurprise, ""))
+		mood(shuffle.EnergyChill, shuffle.TimeMedium, shuffle.FamiliaritySurprise, ""), false)
 	if err != nil {
 		t.Fatalf("shuffle: %v", err)
 	}

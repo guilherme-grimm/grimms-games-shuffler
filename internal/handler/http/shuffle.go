@@ -10,13 +10,18 @@ import (
 	"github.com/guilherme-grimm/ggs/internal/dto/shuffle"
 )
 
+type shuffleRequest struct {
+	shuffle.Mood
+	UseAI bool `json:"useAi"`
+}
+
 func (s *Server) handleShuffle(w http.ResponseWriter, r *http.Request, p player.Player) {
-	var mood shuffle.Mood
-	if err := json.NewDecoder(r.Body).Decode(&mood); err != nil {
+	var req shuffleRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bad body"})
 		return
 	}
-	res, err := s.shuffles.Shuffle(r.Context(), p.SteamID, mood)
+	res, err := s.shuffles.Shuffle(r.Context(), p.SteamID, req.Mood, req.UseAI)
 	switch {
 	case errors.Is(err, shuffle.ErrInvalidMood):
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_mood"})

@@ -128,6 +128,7 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request, p player.Playe
 		LibraryCount: count,
 		ShufflesLeft: left,
 		ResetAt:      reset,
+		AIAvailable:  s.shuffles.AIAvailable(),
 	})
 }
 
@@ -157,4 +158,5 @@ type meResponse struct {
 	LibraryCount int        `json:"libraryCount"`
 	ShufflesLeft int        `json:"shufflesLeft"`
 	ResetAt      time.Time  `json:"resetAt"`
+	AIAvailable  bool       `json:"aiAvailable"`
 }

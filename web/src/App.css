@@ -2,7 +2,10 @@
   --phosphor: #33ff33;
   --phosphor-dim: #1a8a1a;
   --amber: #ffb000;
-  --bg: #010401;
+  /* Not pure black: a dark green-grey keeps the phosphor vibe without the
+     eye-strain contrast of #000. */
+  --bg: #101711;
+  --bg-panel: #0c120d;
 }
 
 * {
@@ -33,18 +36,51 @@ body {
   animation: crt-flicker 4s linear infinite;
 }
 
+/* Scanlines drift slowly downward so the effect feels alive, not stickered
+   on. 4px background tile → 4px translate loops seamlessly. */
 .crt-fx::after {
   content: '';
   position: fixed;
-  inset: 0;
+  inset: -4px 0 0 0;
   pointer-events: none;
   background:
-    radial-gradient(ellipse at center, transparent 60%, rgba(0, 0, 0, 0.45) 100%),
+    radial-gradient(ellipse at center, transparent 60%, rgba(0, 0, 0, 0.4) 100%),
     repeating-linear-gradient(
       to bottom,
       transparent 0 2px,
-      rgba(0, 0, 0, 0.25) 2px 4px
+      rgba(0, 0, 0, 0.22) 2px 4px
     );
+  animation: crt-scan 0.4s linear infinite;
+}
+
+/* Classic slow "roll bar": a faint bright band travelling down the tube. */
+.crt-fx::before {
+  content: '';
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: -20%;
+  height: 15%;
+  pointer-events: none;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    rgba(51, 255, 51, 0.04) 50%,
+    transparent
+  );
+  animation: crt-roll 8s linear infinite;
+}
+
+@keyframes crt-scan {
+  to {
+    transform: translateY(4px);
+  }
+}
+
+@keyframes crt-roll {
+  to {
+    top: 120%;
+  }
 }
 
 /* Barely-there brightness drift; kept subtle on purpose — strong flicker is
@@ -66,7 +102,9 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .crt-fx {
+  .crt-fx,
+  .crt-fx::after,
+  .crt-fx::before {
     animation: none;
   }
 }
@@ -98,6 +136,7 @@ body {
 
 .panel {
   border: 2px solid var(--phosphor);
+  background: var(--bg-panel);
   padding: 1.5rem 2rem;
   display: flex;
   flex-direction: column;
@@ -205,6 +244,28 @@ body {
 .btn.go {
   font-size: 1.1rem;
   padding: 0.9rem;
+}
+
+.ai-row {
+  grid-template-columns: auto 1fr;
+}
+
+.note-input {
+  background: transparent;
+  border: 2px solid var(--phosphor-dim);
+  color: var(--phosphor);
+  font: inherit;
+  padding: 0.6rem;
+  min-width: 0;
+}
+
+.note-input::placeholder {
+  color: var(--phosphor-dim);
+}
+
+.ai-badge {
+  color: var(--amber);
+  font-size: 0.8em;
 }
 
 /* --- result --- */
