@@ -1,0 +1,60 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Build frontend (includes tsc typecheck)
+        working-directory: web
+        run: |
+          pnpm install --frozen-lockfile --ignore-scripts
+          pnpm build
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+
+      - name: Verify sqlc code is up to date
+        run: |
+          go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest
+          sqlc diff
+
+      - uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.11
+
+      - name: Test
+        run: go test -race ./...
+
+      - name: Build
+        run: go build ./...
+
+  deploy:
+    needs: ci
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Coolify deploy
+        run: |
+          curl --fail -X GET "$COOLIFY_WEBHOOK" \
+            -H "Authorization: Bearer $COOLIFY_TOKEN"
+        env:
+          COOLIFY_WEBHOOK: ${{ secrets.COOLIFY_WEBHOOK }}
+          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}

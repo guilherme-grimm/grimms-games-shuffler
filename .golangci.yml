@@ -1,0 +1,22 @@
+version: "2"
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - revive
+  exclusions:
+    paths:
+      - internal/adapter/sqlite/gen
+
+formatters:
+  enable:
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/guilherme-grimm/ggs
+  exclusions:
+    paths:
+      - internal/adapter/sqlite/gen
