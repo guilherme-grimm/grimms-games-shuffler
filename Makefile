@@ -1,6 +1,10 @@
 SQLC := $(shell go env GOPATH)/bin/sqlc
 
-.PHONY: dev build web gen lint test run
+.PHONY: dev build web gen lint test run check
+
+check: lint test ## pre-push gate — no CI, every push deploys
+	$(SQLC) diff
+	cd web && pnpm build
 
 build: web ## production binary with embedded frontend
 	go build -o bin/ggs ./cmd/ggs
