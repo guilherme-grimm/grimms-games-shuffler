@@ -114,12 +114,20 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request, p player.Playe
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal"})
 		return
 	}
+	left, reset, err := s.shuffles.Left(r.Context(), p.SteamID)
+	if err != nil {
+		s.log.Error("shuffles left", "error", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal"})
+		return
+	}
 	writeJSON(w, http.StatusOK, meResponse{
 		SteamID:      p.SteamID,
 		PersonaName:  p.PersonaName,
 		AvatarURL:    p.AvatarURL,
 		LastSyncAt:   p.LastSyncAt,
 		LibraryCount: count,
+		ShufflesLeft: left,
+		ResetAt:      reset,
 	})
 }
 
@@ -147,4 +155,6 @@ type meResponse struct {
 	AvatarURL    string     `json:"avatarUrl"`
 	LastSyncAt   *time.Time `json:"lastSyncAt"`
 	LibraryCount int        `json:"libraryCount"`
+	ShufflesLeft int        `json:"shufflesLeft"`
+	ResetAt      time.Time  `json:"resetAt"`
 }

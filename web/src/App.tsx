@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { Shuffler } from './Shuffler'
 import './App.css'
 
 type Me = {
@@ -7,6 +8,8 @@ type Me = {
   avatarUrl: string
   lastSyncAt: string | null
   libraryCount: number
+  shufflesLeft: number
+  resetAt: string
 }
 
 type Phase =
@@ -16,6 +19,14 @@ type Phase =
 
 export default function App() {
   const [phase, setPhase] = useState<Phase>({ kind: 'loading' })
+  const [crt, setCrt] = useState(() => localStorage.getItem('ggs_crt') !== 'off')
+
+  const toggleCrt = () => {
+    setCrt((on) => {
+      localStorage.setItem('ggs_crt', on ? 'off' : 'on')
+      return !on
+    })
+  }
 
   const loadMe = useCallback(async () => {
     const res = await fetch('/api/me')
@@ -53,7 +64,14 @@ export default function App() {
   }
 
   return (
-    <main className="crt">
+    <main className={crt ? 'screen crt-fx' : 'screen'}>
+      <button
+        className="crt-toggle"
+        onClick={toggleCrt}
+        title="CRT effect can be tiring on the eyes — toggle it off anytime"
+      >
+        CRT: {crt ? 'ON' : 'OFF'}
+      </button>
       <h1 className="title">GGS :: GRIMM'S GAMES SHUFFLER</h1>
 
       {phase.kind === 'loading' && <p className="blink">BOOTING…</p>}
@@ -84,16 +102,26 @@ export default function App() {
           {phase.syncError && <p className="error">! {phase.syncError}</p>}
 
           <div className="actions">
-            <button className="btn" onClick={sync} disabled={phase.syncing}>
-              {phase.syncing ? 'SYNCING…' : '⟳ RESYNC LIBRARY'}
+            <button className="btn dim" onClick={sync} disabled={phase.syncing}>
+              {phase.syncing ? 'SYNCING…' : '⟳ RESYNC'}
             </button>
             <button className="btn dim" onClick={logout}>
               EJECT
             </button>
           </div>
-
-          <p className="dim">MOOD QUESTIONNAIRE COMING ONLINE SOON…</p>
         </section>
+      )}
+
+      {phase.kind === 'ready' && phase.me.libraryCount > 0 && (
+        <Shuffler
+          shufflesLeft={phase.me.shufflesLeft}
+          resetAt={phase.me.resetAt}
+          onSpent={(shufflesLeft) =>
+            setPhase((p) =>
+              p.kind === 'ready' ? { ...p, me: { ...p.me, shufflesLeft } } : p,
+            )
+          }
+        />
       )}
     </main>
   )

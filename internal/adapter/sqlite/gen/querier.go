@@ -10,14 +10,21 @@ import (
 
 type Querier interface {
 	CountLibrary(ctx context.Context, steamID string) (int64, error)
+	CountShufflesToday(ctx context.Context, arg CountShufflesTodayParams) (int64, error)
 	CreateSession(ctx context.Context, arg CreateSessionParams) error
 	DeleteExpiredSessions(ctx context.Context, expiresAt string) error
 	DeleteLibrary(ctx context.Context, steamID string) error
 	DeleteSession(ctx context.Context, token string) error
+	EnrichmentProgress(ctx context.Context, steamID string) (EnrichmentProgressRow, error)
 	EnsureGame(ctx context.Context, arg EnsureGameParams) error
 	GetPlayer(ctx context.Context, steamID string) (Player, error)
 	GetSession(ctx context.Context, arg GetSessionParams) (Session, error)
 	InsertLibraryGame(ctx context.Context, arg InsertLibraryGameParams) error
+	InsertShuffle(ctx context.Context, arg InsertShuffleParams) error
+	LibraryCandidates(ctx context.Context, steamID string) ([]LibraryCandidatesRow, error)
+	NextUnenriched(ctx context.Context, limit int64) ([]int64, error)
+	SaveEnrichment(ctx context.Context, arg SaveEnrichmentParams) error
+	TodaysShuffledAppids(ctx context.Context, arg TodaysShuffledAppidsParams) ([]int64, error)
 	TouchLastSync(ctx context.Context, arg TouchLastSyncParams) error
 	UpsertPlayer(ctx context.Context, arg UpsertPlayerParams) error
 }

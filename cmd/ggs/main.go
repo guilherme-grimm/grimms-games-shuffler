@@ -12,12 +12,16 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sync"
 	"syscall"
 	"time"
 
 	"github.com/guilherme-grimm/ggs/internal/adapter/sqlite"
 	"github.com/guilherme-grimm/ggs/internal/adapter/steam"
+	"github.com/guilherme-grimm/ggs/internal/adapter/steamspy"
+	catalogdomain "github.com/guilherme-grimm/ggs/internal/domain/catalog"
 	playerdomain "github.com/guilherme-grimm/ggs/internal/domain/player"
+	shuffledomain "github.com/guilherme-grimm/ggs/internal/domain/shuffle"
 	"github.com/guilherme-grimm/ggs/internal/dto/player"
 	handler "github.com/guilherme-grimm/ggs/internal/handler/http"
 	"github.com/guilherme-grimm/ggs/web"
@@ -101,10 +105,18 @@ func run() error {
 			cfg.baseURL,
 		)
 	}
+	shuffles := shuffledomain.NewService(sqlite.NewShuffleStorage(db))
+	cat := catalogdomain.NewService(
+		sqlite.NewCatalogStorage(db), steamspy.NewClient(), log, 1200*time.Millisecond,
+	)
+
+	var wg sync.WaitGroup
+	enrichCtx, stopEnricher := context.WithCancel(context.Background())
+	wg.Go(func() { cat.Run(enrichCtx) })
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.port,
-		Handler:           handler.NewServer(log, db, dist, players, cfg.baseURL).Handler(),
+		Handler:           handler.NewServer(log, db, dist, players, shuffles, cat, cfg.baseURL).Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
@@ -114,9 +126,13 @@ func run() error {
 
 	select {
 	case err := <-errCh:
+		stopEnricher()
+		wg.Wait()
 		return fmt.Errorf("serve: %w", err)
 	case <-ctx.Done():
 	}
+	stopEnricher()
+	wg.Wait()
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
