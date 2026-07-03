@@ -8,3 +8,7 @@ bin/
 web/node_modules/
 web/dist/*
 !web/dist/.gitkeep
+
+# stray local builds
+/ggs
+/devseed
