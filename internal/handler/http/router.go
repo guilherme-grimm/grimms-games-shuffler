@@ -8,6 +8,8 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+
+	"github.com/guilherme-grimm/ggs/internal/dto/player"
 )
 
 // Pinger reports storage liveness for health checks.
@@ -17,20 +19,31 @@ type Pinger interface {
 
 // Server holds the wired dependencies for all HTTP routes.
 type Server struct {
-	log  *slog.Logger
-	db   Pinger
-	dist fs.FS
+	log     *slog.Logger
+	db      Pinger
+	dist    fs.FS
+	players player.Service // nil when steam auth is not configured
+	baseURL string
 }
 
-// NewServer wires the HTTP layer's dependencies; dist is the built SPA.
-func NewServer(log *slog.Logger, db Pinger, dist fs.FS) *Server {
-	return &Server{log: log, db: db, dist: dist}
+// NewServer wires the HTTP layer's dependencies; dist is the built SPA and
+// players may be nil on an Instance without steam credentials.
+func NewServer(log *slog.Logger, db Pinger, dist fs.FS, players player.Service, baseURL string) *Server {
+	return &Server{log: log, db: db, dist: dist, players: players, baseURL: baseURL}
 }
 
 // Handler returns the root http.Handler with all routes mounted.
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", s.handleHealthz)
+
+	mux.HandleFunc("GET /auth/steam/login", s.handleSteamLogin)
+	mux.HandleFunc("GET /auth/steam/callback", s.handleSteamCallback)
+	mux.HandleFunc("POST /auth/logout", s.handleLogout)
+
+	mux.HandleFunc("GET /api/me", s.withPlayer(s.handleMe))
+	mux.HandleFunc("POST /api/sync", s.withPlayer(s.handleSync))
+
 	mux.Handle("/", s.spaHandler())
 	return mux
 }

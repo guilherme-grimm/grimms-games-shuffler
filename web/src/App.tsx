@@ -1,122 +1,100 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
+import { useCallback, useEffect, useState } from 'react'
 import './App.css'
 
-function App() {
-  const [count, setCount] = useState(0)
-
-  return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
-
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+type Me = {
+  steamId: string
+  personaName: string
+  avatarUrl: string
+  lastSyncAt: string | null
+  libraryCount: number
 }
 
-export default App
+type Phase =
+  | { kind: 'loading' }
+  | { kind: 'anon' }
+  | { kind: 'ready'; me: Me; syncError: string | null; syncing: boolean }
+
+export default function App() {
+  const [phase, setPhase] = useState<Phase>({ kind: 'loading' })
+
+  const loadMe = useCallback(async () => {
+    const res = await fetch('/api/me')
+    if (res.status === 401) {
+      setPhase({ kind: 'anon' })
+      return
+    }
+    if (!res.ok) throw new Error(`me: ${res.status}`)
+    const me: Me = await res.json()
+    setPhase({ kind: 'ready', me, syncError: null, syncing: false })
+  }, [])
+
+  useEffect(() => {
+    loadMe().catch(() => setPhase({ kind: 'anon' }))
+  }, [loadMe])
+
+  const sync = async () => {
+    setPhase((p) => (p.kind === 'ready' ? { ...p, syncing: true, syncError: null } : p))
+    const res = await fetch('/api/sync', { method: 'POST' })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({ message: 'Sync failed.' }))
+      setPhase((p) =>
+        p.kind === 'ready'
+          ? { ...p, syncing: false, syncError: body.message ?? 'Sync failed.' }
+          : p,
+      )
+      return
+    }
+    await loadMe()
+  }
+
+  const logout = async () => {
+    await fetch('/auth/logout', { method: 'POST' })
+    setPhase({ kind: 'anon' })
+  }
+
+  return (
+    <main className="crt">
+      <h1 className="title">GGS :: GRIMM'S GAMES SHUFFLER</h1>
+
+      {phase.kind === 'loading' && <p className="blink">BOOTING…</p>}
+
+      {phase.kind === 'anon' && (
+        <section className="panel">
+          <p>INSERT COIN TO CONTINUE</p>
+          <a className="btn" href="/auth/steam/login">
+            ▶ SIGN IN THROUGH STEAM
+          </a>
+        </section>
+      )}
+
+      {phase.kind === 'ready' && (
+        <section className="panel">
+          <header className="player-row">
+            <img className="avatar" src={phase.me.avatarUrl} alt="" />
+            <div>
+              <p className="persona">{phase.me.personaName}</p>
+              <p className="dim">
+                LIBRARY: {phase.me.libraryCount} GAMES
+                {phase.me.lastSyncAt &&
+                  ` · SYNCED ${new Date(phase.me.lastSyncAt).toLocaleString()}`}
+              </p>
+            </div>
+          </header>
+
+          {phase.syncError && <p className="error">! {phase.syncError}</p>}
+
+          <div className="actions">
+            <button className="btn" onClick={sync} disabled={phase.syncing}>
+              {phase.syncing ? 'SYNCING…' : '⟳ RESYNC LIBRARY'}
+            </button>
+            <button className="btn dim" onClick={logout}>
+              EJECT
+            </button>
+          </div>
+
+          <p className="dim">MOOD QUESTIONNAIRE COMING ONLINE SOON…</p>
+        </section>
+      )}
+    </main>
+  )
+}

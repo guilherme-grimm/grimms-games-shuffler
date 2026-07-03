@@ -9,11 +9,15 @@ import (
 )
 
 type Querier interface {
+	CountLibrary(ctx context.Context, steamID string) (int64, error)
 	CreateSession(ctx context.Context, arg CreateSessionParams) error
 	DeleteExpiredSessions(ctx context.Context, expiresAt string) error
+	DeleteLibrary(ctx context.Context, steamID string) error
 	DeleteSession(ctx context.Context, token string) error
+	EnsureGame(ctx context.Context, arg EnsureGameParams) error
 	GetPlayer(ctx context.Context, steamID string) (Player, error)
 	GetSession(ctx context.Context, arg GetSessionParams) (Session, error)
+	InsertLibraryGame(ctx context.Context, arg InsertLibraryGameParams) error
 	TouchLastSync(ctx context.Context, arg TouchLastSyncParams) error
 	UpsertPlayer(ctx context.Context, arg UpsertPlayerParams) error
 }

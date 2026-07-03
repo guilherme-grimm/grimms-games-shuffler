@@ -16,6 +16,9 @@ import (
 	"time"
 
 	"github.com/guilherme-grimm/ggs/internal/adapter/sqlite"
+	"github.com/guilherme-grimm/ggs/internal/adapter/steam"
+	playerdomain "github.com/guilherme-grimm/ggs/internal/domain/player"
+	"github.com/guilherme-grimm/ggs/internal/dto/player"
 	handler "github.com/guilherme-grimm/ggs/internal/handler/http"
 	"github.com/guilherme-grimm/ggs/web"
 )
@@ -90,9 +93,18 @@ func run() error {
 		return fmt.Errorf("sub dist fs: %w", err)
 	}
 
+	var players player.Service
+	if cfg.steamAPIKey != "" && cfg.baseURL != "" {
+		players = playerdomain.NewService(
+			sqlite.NewPlayerStorage(db),
+			steam.NewClient(cfg.steamAPIKey),
+			cfg.baseURL,
+		)
+	}
+
 	srv := &http.Server{
 		Addr:              ":" + cfg.port,
-		Handler:           handler.NewServer(log, db, dist).Handler(),
+		Handler:           handler.NewServer(log, db, dist, players, cfg.baseURL).Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
