@@ -34,7 +34,6 @@ type config struct {
 	dataDir       string
 	baseURL       string
 	steamAPIKey   string
-	sessionSecret string
 	openrouterKey string
 	aiModel       string
 }
@@ -45,7 +44,6 @@ func loadConfig() config {
 		dataDir:       envOr("DATA_DIR", "/data"),
 		baseURL:       os.Getenv("BASE_URL"),
 		steamAPIKey:   os.Getenv("STEAM_API_KEY"),
-		sessionSecret: os.Getenv("SESSION_SECRET"),
 		openrouterKey: os.Getenv("OPENROUTER_API_KEY"),
 		aiModel:       envOr("GGS_AI_MODEL", "meta-llama/llama-3.3-70b-instruct:free"),
 	}
@@ -74,7 +72,6 @@ func run() error {
 	// comes up before secrets are configured.
 	for _, v := range []struct{ name, val string }{
 		{"STEAM_API_KEY", cfg.steamAPIKey},
-		{"SESSION_SECRET", cfg.sessionSecret},
 		{"BASE_URL", cfg.baseURL},
 	} {
 		if v.val == "" {

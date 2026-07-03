@@ -36,22 +36,23 @@ func main() {
 	mustExec(`INSERT INTO sessions (token, steam_id, created_at, expires_at) VALUES (?,?,?,?)`,
 		hash, "76561198000000001", now, exp)
 
+	// Real appids so Steam CDN artwork resolves in the result screen.
 	games := []struct {
 		appid    int64
 		name     string
 		tags     string
 		playtime int64
 	}{
-		{10, "Cozy Farm", `["Relaxing","Farming Sim","Casual"]`, 0},
-		{20, "Bullet Storm", `["Action","Bullet Hell","Fast-Paced"]`, 30},
-		{30, "Epic Saga", `["RPG","Story Rich","Open World"]`, 3000},
-		{40, "Puzzle Tower", `["Puzzle","Logic","Turn-Based"]`, 90},
-		{50, "Mystery Box", `[]`, 0},
+		{413150, "Stardew Valley", `["Relaxing","Farming Sim","Pixel Graphics"]`, 0},
+		{1145360, "Hades", `["Action","Roguelike","Fast-Paced"]`, 30},
+		{292030, "The Witcher 3: Wild Hunt", `["RPG","Story Rich","Open World"]`, 3000},
+		{736260, "Baba Is You", `["Puzzle","Logic","2D"]`, 90},
+		{753640, "Outer Wilds", `[]`, 0},
 	}
 	for _, g := range games {
 		enriched := "2026-01-01T00:00:00Z"
 		src := "steamspy"
-		if g.appid == 50 {
+		if g.appid == 753640 {
 			mustExec(`INSERT INTO games (appid, name) VALUES (?,?)`, g.appid, g.name)
 		} else {
 			mustExec(`INSERT INTO games (appid, name, tags, source, enriched_at) VALUES (?,?,?,?,?)`,
