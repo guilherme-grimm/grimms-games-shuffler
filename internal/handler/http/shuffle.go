@@ -15,9 +15,13 @@ type shuffleRequest struct {
 	UseAI bool `json:"useAi"`
 }
 
+// _shuffleBodyLimit bounds the request body; a Mood is a handful of enums
+// plus a capped Note, so 4KB is generous.
+const _shuffleBodyLimit = 4 << 10
+
 func (s *Server) handleShuffle(w http.ResponseWriter, r *http.Request, p player.Player) {
 	var req shuffleRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, _shuffleBodyLimit)).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bad body"})
 		return
 	}

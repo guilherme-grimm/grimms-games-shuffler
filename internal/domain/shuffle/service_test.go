@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"strings"
 	"testing"
 
 	domain "github.com/guilherme-grimm/ggs/internal/domain/shuffle"
@@ -173,10 +174,17 @@ func TestShuffleEmptyLibrary(t *testing.T) {
 
 func TestShuffleInvalidMood(t *testing.T) {
 	t.Parallel()
-	svc := domain.NewService(&fakeStore{candidates: lib()}, nil, testLogger())
-	_, err := svc.Shuffle(t.Context(), "p1", shuffle.Mood{Energy: "hyped"}, false)
-	if !errors.Is(err, shuffle.ErrInvalidMood) {
-		t.Fatalf("err = %v, want ErrInvalidMood", err)
+	longNote := mood(shuffle.EnergyChill, shuffle.TimeQuick, shuffle.FamiliaritySurprise, "")
+	longNote.Note = strings.Repeat("a", shuffle.MoodNoteMaxLen+1)
+
+	for name, m := range map[string]shuffle.Mood{
+		"unknown answer": {Energy: "hyped"},
+		"oversized note": longNote,
+	} {
+		svc := domain.NewService(&fakeStore{candidates: lib()}, nil, testLogger())
+		if _, err := svc.Shuffle(t.Context(), "p1", m, false); !errors.Is(err, shuffle.ErrInvalidMood) {
+			t.Fatalf("%s: err = %v, want ErrInvalidMood", name, err)
+		}
 	}
 }
 

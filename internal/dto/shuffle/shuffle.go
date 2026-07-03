@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"time"
+	"unicode/utf8"
 )
 
 // Answer values for each Mood question. Empty means "not asked / any".
@@ -26,6 +27,11 @@ const (
 	BrainPuzzle = "puzzle"
 	BrainReflex = "reflex"
 )
+
+// MoodNoteMaxLen caps the Mood Note in runes: it is the only free-text
+// input that reaches the AI prompt, so an unbounded one is a token-cost
+// amplifier (the UI stops at 200).
+const MoodNoteMaxLen = 280
 
 // Mood is a Player's answers to the fixed questionnaire. Brain is optional.
 // Note is free text read only when AI mode is on.
@@ -50,7 +56,8 @@ func (m Mood) Valid() bool {
 	return ok(m.Energy, EnergyChill, EnergyBalanced, EnergyAdrenaline) &&
 		ok(m.Time, TimeQuick, TimeMedium, TimeLong) &&
 		ok(m.Familiarity, FamiliarityFavorite, FamiliarityBacklog, FamiliaritySurprise) &&
-		(m.Brain == "" || ok(m.Brain, BrainStory, BrainPuzzle, BrainReflex))
+		(m.Brain == "" || ok(m.Brain, BrainStory, BrainPuzzle, BrainReflex)) &&
+		utf8.RuneCountInString(m.Note) <= MoodNoteMaxLen
 }
 
 // Candidate is one Library entry joined with its Catalog metadata.
@@ -117,6 +124,9 @@ type Picker interface {
 type Storage interface {
 	CountToday(ctx context.Context, steamID, dateUTC string) (int, error)
 	TodaysAppIDs(ctx context.Context, steamID, dateUTC string) ([]int64, error)
+	// Insert persists the Record only while the day's budget holds,
+	// atomically — the service's CountToday pre-check races under
+	// concurrent requests. Returns ErrBudgetSpent when the day is full.
 	Insert(ctx context.Context, r Record) error
 	// Candidates returns the Player's whole Library with metadata joined.
 	Candidates(ctx context.Context, steamID string) ([]Candidate, error)

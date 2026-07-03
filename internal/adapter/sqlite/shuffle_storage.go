@@ -12,14 +12,15 @@ import (
 
 // ShuffleStorage implements shuffle.Storage.
 type ShuffleStorage struct {
-	q *gen.Queries
+	db *sql.DB
+	q  *gen.Queries
 }
 
 var _ shuffle.Storage = (*ShuffleStorage)(nil)
 
 // NewShuffleStorage wraps db with the shuffle.Storage implementation.
 func NewShuffleStorage(db *sql.DB) *ShuffleStorage {
-	return &ShuffleStorage{q: gen.New(db)}
+	return &ShuffleStorage{db: db, q: gen.New(db)}
 }
 
 // CountToday implements shuffle.Storage.
@@ -40,7 +41,10 @@ func (s *ShuffleStorage) TodaysAppIDs(ctx context.Context, steamID, dateUTC stri
 	return ids, nil
 }
 
-// Insert implements shuffle.Storage.
+// Insert implements shuffle.Storage. The recount and insert share a
+// transaction so concurrent requests cannot both slip past the service's
+// budget pre-check; with the pool capped at one connection the pair is
+// fully serialized.
 func (s *ShuffleStorage) Insert(ctx context.Context, r shuffle.Record) error {
 	mood, err := json.Marshal(r.Mood)
 	if err != nil {
@@ -50,13 +54,32 @@ func (s *ShuffleStorage) Insert(ctx context.Context, r shuffle.Record) error {
 	if r.UsedAI {
 		usedAI = 1
 	}
-	err = s.q.InsertShuffle(ctx, gen.InsertShuffleParams{
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin insert shuffle: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	qtx := s.q.WithTx(tx)
+
+	n, err := qtx.CountShufflesToday(ctx, gen.CountShufflesTodayParams{SteamID: r.SteamID, DateUtc: r.DateUTC})
+	if err != nil {
+		return fmt.Errorf("recount shuffles: %w", err)
+	}
+	if n >= shuffle.DailyBudget {
+		return shuffle.ErrBudgetSpent
+	}
+
+	err = qtx.InsertShuffle(ctx, gen.InsertShuffleParams{
 		SteamID: r.SteamID, DateUtc: r.DateUTC, Appid: r.AppID,
 		Mood: string(mood), UsedAi: usedAI, Why: r.Why,
 		CreatedAt: formatTime(r.CreatedAt),
 	})
 	if err != nil {
 		return fmt.Errorf("insert shuffle: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit insert shuffle: %w", err)
 	}
 	return nil
 }
