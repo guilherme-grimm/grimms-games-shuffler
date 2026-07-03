@@ -114,11 +114,16 @@ body {
   }
 }
 
-.crt-toggle {
+.cab-toggles {
   position: fixed;
   top: 0.75rem;
   right: 0.75rem;
   z-index: 1;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.cab-toggle {
   border: 1px solid var(--phosphor-dim);
   background: transparent;
   color: var(--phosphor-dim);
@@ -128,7 +133,7 @@ body {
   cursor: pointer;
 }
 
-.crt-toggle:hover {
+.cab-toggle:hover {
   color: var(--phosphor);
   border-color: var(--phosphor);
 }
@@ -305,6 +310,86 @@ body {
   font-size: 0.8em;
 }
 
+/* --- juice: cabinet shake + reel --- */
+/* Someone whacked the cabinet. Hard variant fires on reveal, soft on errors. */
+.screen.shaking {
+  animation: cab-shake 300ms linear;
+}
+
+.screen.shaking-hard {
+  animation: cab-shake 420ms linear;
+}
+
+/* While the CRT effect is on, the whack also degausses the tube for a beat. */
+.crt-fx.shaking,
+.crt-fx.shaking-hard {
+  animation:
+    cab-shake 420ms linear,
+    degauss 550ms ease-out;
+}
+
+@keyframes cab-shake {
+  15% {
+    transform: translate(-4px, 2px);
+  }
+  30% {
+    transform: translate(4px, -2px);
+  }
+  45% {
+    transform: translate(-3px, -1px);
+  }
+  60% {
+    transform: translate(3px, 1px);
+  }
+  75% {
+    transform: translate(-1px, 1px);
+  }
+  100% {
+    transform: translate(0, 0);
+  }
+}
+
+@keyframes degauss {
+  0% {
+    filter: hue-rotate(24deg) saturate(1.6) brightness(1.25);
+  }
+  40% {
+    filter: hue-rotate(-12deg) saturate(1.2);
+  }
+  100% {
+    filter: none;
+  }
+}
+
+.reel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 1.5rem 0;
+  text-align: center;
+  overflow: hidden;
+}
+
+.reel-row {
+  margin: 0;
+  font-size: 1rem;
+  letter-spacing: 0.2em;
+  white-space: nowrap;
+  opacity: 0.35;
+}
+
+.reel-row.reel-mid {
+  font-size: 1.15rem;
+  opacity: 1;
+  color: var(--glow);
+  text-shadow: 0 0 10px hsl(120 90% 65% / 0.6);
+}
+
+.reel-label {
+  margin: 0.75rem 0 0;
+  letter-spacing: 0.3em;
+}
+
 /* --- result --- */
 /* CRT power-on: the result slams open like an old tube warming up. */
 .result {
@@ -345,7 +430,11 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .result,
   .btn,
-  .btn.selected {
+  .btn.selected,
+  .screen.shaking,
+  .screen.shaking-hard,
+  .crt-fx.shaking,
+  .crt-fx.shaking-hard {
     animation: none;
     transition: none;
   }

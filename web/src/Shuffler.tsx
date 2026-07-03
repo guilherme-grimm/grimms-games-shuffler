@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import * as sfx from './sfx'
 
 export type Mood = {
   energy: string
@@ -63,6 +64,60 @@ const QUESTIONS: {
   },
 ]
 
+const GLYPHS = '▓▒░█<>/[]{}=+*#%&$!?0123456789'
+const glyphs = (n: number) =>
+  Array.from({ length: n }, () => GLYPHS[Math.floor(Math.random() * GLYPHS.length)]).join('')
+
+// The reel spins at least this long so the pick feels drawn, not fetched.
+const MIN_ROLL_MS = 1400
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+/** Slot-machine reel: three rows of churning glyphs, ticking as they spin. */
+function Reel() {
+  const [rows, setRows] = useState(() => [glyphs(22), glyphs(22), glyphs(22)])
+
+  useEffect(() => {
+    if (sfx.reducedMotion()) return
+    const timer = setInterval(() => {
+      setRows([glyphs(22), glyphs(22), glyphs(22)])
+      sfx.tick()
+    }, 70)
+    return () => clearInterval(timer)
+  }, [])
+
+  return (
+    <div className="reel" role="status" aria-label="Shuffling">
+      <p className="reel-row dim">{rows[0]}</p>
+      <p className="reel-row reel-mid">{rows[1]}</p>
+      <p className="reel-row dim">{rows[2]}</p>
+      <p className="blink reel-label">◆ SHUFFLING</p>
+    </div>
+  )
+}
+
+/** Decodes text from scrambled glyphs, left to right. */
+function Decode({ text }: { text: string }) {
+  const [shown, setShown] = useState(() => (sfx.reducedMotion() ? text : glyphs(text.length)))
+
+  useEffect(() => {
+    if (sfx.reducedMotion()) return
+    let i = 0
+    const timer = setInterval(() => {
+      i += 1 + Math.floor(text.length / 18)
+      if (i >= text.length) {
+        setShown(text)
+        clearInterval(timer)
+        return
+      }
+      setShown(text.slice(0, i) + glyphs(Math.min(5, text.length - i)))
+    }, 28)
+    return () => clearInterval(timer)
+  }, [text])
+
+  return <>{shown}</>
+}
+
 export function Shuffler(props: {
   shufflesLeft: number
   resetAt: string
@@ -71,13 +126,15 @@ export function Shuffler(props: {
 }) {
   const [mood, setMood] = useState<Partial<Mood>>({})
   const [result, setResult] = useState<ShuffleResult | null>(null)
-  const [busy, setBusy] = useState(false)
+  const [rolling, setRolling] = useState(false)
+  const [aiAsked, setAiAsked] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [progress, setProgress] = useState<Progress | null>(null)
   const [useAi, setUseAi] = useState(() => localStorage.getItem('ggs_ai') !== 'off')
   const [note, setNote] = useState('')
 
   const toggleAi = () => {
+    sfx.click()
     setUseAi((on) => {
       localStorage.setItem('ggs_ai', on ? 'off' : 'on')
       return !on
@@ -104,27 +161,57 @@ export function Shuffler(props: {
   const answered = QUESTIONS.filter((q) => !q.optional).every((q) => mood[q.key])
   const left = props.shufflesLeft
 
+  const pick = (key: keyof Mood, value: string) => {
+    const deselecting = mood[key] === value
+    if (deselecting) {
+      sfx.deselect()
+    } else {
+      sfx.select(Object.values(mood).filter(Boolean).length)
+    }
+    setMood((m) => ({ ...m, [key]: deselecting ? undefined : value }))
+  }
+
   const shuffle = async () => {
-    setBusy(true)
     setError(null)
+    setResult(null)
+    setRolling(true)
+    sfx.coin()
     const ai = props.aiAvailable && useAi
-    const res = await fetch('/api/shuffle', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        ...mood,
-        useAi: ai,
-        note: ai && note.trim() ? note.trim() : undefined,
-      }),
-    })
-    setBusy(false)
+    const started = Date.now()
+
+    let res: Response
+    try {
+      res = await fetch('/api/shuffle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...mood,
+          useAi: ai,
+          note: ai && note.trim() ? note.trim() : undefined,
+        }),
+      })
+    } catch {
+      setRolling(false)
+      sfx.denied()
+      sfx.shakeScreen()
+      setError('Connection lost. Check the cabinet cables and retry.')
+      return
+    }
+    await sleep(Math.max(0, MIN_ROLL_MS - (Date.now() - started)))
+    setRolling(false)
+
     if (!res.ok) {
       const body = await res.json().catch(() => ({}))
+      sfx.denied()
+      sfx.shakeScreen()
       setError(body.message ?? 'Shuffle failed.')
       if (res.status === 429) props.onSpent(0)
       return
     }
     const r: ShuffleResult = await res.json()
+    sfx.reveal()
+    sfx.shakeScreen(true)
+    setAiAsked(ai)
     setResult(r)
     props.onSpent(r.shufflesLeft)
   }
@@ -142,7 +229,9 @@ export function Shuffler(props: {
         </p>
       )}
 
-      {result ? (
+      {rolling ? (
+        <Reel />
+      ) : result ? (
         <div className="result">
           <img
             className="header-img"
@@ -150,25 +239,31 @@ export function Shuffler(props: {
             alt={result.name}
           />
           <h2 className="game-name">
-            {result.name}
+            <Decode text={result.name} />
             {result.usedAi && <span className="ai-badge"> [AI PICK]</span>}
           </h2>
           <p className="why">&gt; {result.why}</p>
+          {aiAsked && !result.usedAi && (
+            <p className="dim">AI WAS BUSY — ARCADE BRAIN TOOK OVER.</p>
+          )}
           <div className="actions">
             <a
               className="btn accent"
               href={`steam://run/${result.appId}`}
+              onClick={() => sfx.coin()}
             >
               ▶ PLAY
             </a>
-            <button
-              className="btn"
-              onClick={shuffle}
-              disabled={busy || left === 0}
-            >
+            <button className="btn" onClick={shuffle} disabled={left === 0}>
               ⟳ SHUFFLE AGAIN ({left})
             </button>
-            <button className="btn dim" onClick={() => setResult(null)}>
+            <button
+              className="btn dim"
+              onClick={() => {
+                sfx.click()
+                setResult(null)
+              }}
+            >
               CHANGE MOOD
             </button>
           </div>
@@ -183,12 +278,7 @@ export function Shuffler(props: {
                   <button
                     key={o.value}
                     className={mood[q.key] === o.value ? 'btn selected' : 'btn'}
-                    onClick={() =>
-                      setMood((m) => ({
-                        ...m,
-                        [q.key]: m[q.key] === o.value ? undefined : o.value,
-                      }))
-                    }
+                    onClick={() => pick(q.key, o.value)}
                   >
                     {o.label}
                   </button>
@@ -222,15 +312,15 @@ export function Shuffler(props: {
           <button
             className="btn go"
             onClick={shuffle}
-            disabled={!answered || busy || left === 0}
+            disabled={!answered || left === 0}
           >
-            {busy ? 'SHUFFLING…' : `◆ SHUFFLE (${left} LEFT TODAY)`}
+            ◆ SHUFFLE ({left} LEFT TODAY)
           </button>
         </>
       )}
 
       {error && <p className="error">! {error}</p>}
-      {left === 0 && (
+      {left === 0 && !rolling && (
         <p className="dim">OUT OF SHUFFLES — MORE AT {resetLocal} (UTC MIDNIGHT)</p>
       )}
     </section>

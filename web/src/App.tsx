@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Shuffler } from './Shuffler'
+import * as sfx from './sfx'
 import './App.css'
 
 type Me = {
@@ -21,12 +22,20 @@ type Phase =
 export default function App() {
   const [phase, setPhase] = useState<Phase>({ kind: 'loading' })
   const [crt, setCrt] = useState(() => localStorage.getItem('ggs_crt') !== 'off')
+  const [snd, setSnd] = useState(sfx.sndOn)
 
   const toggleCrt = () => {
+    sfx.click()
     setCrt((on) => {
       localStorage.setItem('ggs_crt', on ? 'off' : 'on')
       return !on
     })
+  }
+
+  const toggleSnd = () => {
+    const on = sfx.toggleSnd()
+    setSnd(on)
+    if (on) sfx.coin() // audible proof it's back on
   }
 
   const loadMe = useCallback(async () => {
@@ -45,6 +54,7 @@ export default function App() {
   }, [loadMe])
 
   const sync = async () => {
+    sfx.click()
     setPhase((p) => (p.kind === 'ready' ? { ...p, syncing: true, syncError: null } : p))
     const res = await fetch('/api/sync', { method: 'POST' })
     if (!res.ok) {
@@ -60,19 +70,29 @@ export default function App() {
   }
 
   const logout = async () => {
+    sfx.click()
     await fetch('/auth/logout', { method: 'POST' })
     setPhase({ kind: 'anon' })
   }
 
   return (
     <main className={crt ? 'screen crt-fx' : 'screen'}>
-      <button
-        className="crt-toggle"
-        onClick={toggleCrt}
-        title="CRT effect can be tiring on the eyes — toggle it off anytime"
-      >
-        CRT: {crt ? 'ON' : 'OFF'}
-      </button>
+      <div className="cab-toggles">
+        <button
+          className="cab-toggle"
+          onClick={toggleCrt}
+          title="CRT effect can be tiring on the eyes — toggle it off anytime"
+        >
+          CRT: {crt ? 'ON' : 'OFF'}
+        </button>
+        <button
+          className="cab-toggle"
+          onClick={toggleSnd}
+          title="Arcade sounds — all synthesized, all skippable"
+        >
+          SND: {snd ? 'ON' : 'OFF'}
+        </button>
+      </div>
       <h1 className="title">GGS :: GRIMM'S GAMES SHUFFLER</h1>
 
       {phase.kind === 'loading' && <p className="blink">BOOTING…</p>}
@@ -80,7 +100,7 @@ export default function App() {
       {phase.kind === 'anon' && (
         <section className="panel">
           <p>INSERT COIN TO CONTINUE</p>
-          <a className="btn" href="/auth/steam/login">
+          <a className="btn" href="/auth/steam/login" onClick={() => sfx.coin()}>
             ▶ SIGN IN THROUGH STEAM
           </a>
         </section>
