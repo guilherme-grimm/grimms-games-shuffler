@@ -1,5 +1,5 @@
 # --- frontend ---
-FROM node:22-alpine AS web
+FROM node:22.23.4-alpine AS web
 RUN npm install -g pnpm@11 --ignore-scripts
 WORKDIR /src/web
 COPY web/package.json web/pnpm-lock.yaml ./
